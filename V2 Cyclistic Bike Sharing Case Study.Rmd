@@ -1,0 +1,779 @@
+---
+title: "Case Study - How do annual members and casual riders use Cyclistic Bikes differently?"
+author: "Dipo Ajayi"
+date: "07/03/2022"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+![](images/Screenshot%202022-03-15%20at%201.10.12%20PM.png)
+
+### Cyclistic Bike Sharing Company, Chicago, USA
+
+#### March 7, 2021
+
+## Introduction
+
+The objective of this Data Analytics case study was to analyze how Cyclistic Annual Members and Casual Riders use or rent Cyclistic Bikes differently.
+
+The Chicago based company is interested in knowing how to target marketing strategies at casual riders (Customers) in order to convert them into annual members (Subscribers) by understanding how the two categories of riders are different and how their use of the bikes differs and a clear understanding of the differences in the trends between them.
+
+#### Stakeholders
+
+-   Director of Marketing - Lily Moreno
+-   Executives at Cyclistic
+-   Other Data Analytics Team members in the company
+
+## Analysis and Scope of the Problem - Ask
+
+In order to solve the dilemma, we ask on overarching question:
+
+1.  Are there differences that may influence the marketing objective i.e. target Casual riders in order to convert them to Annual riders, if Yes, what are those differences?
+
+## Examination and Preparation of the Data
+
+The data for this analysis was made available by Motivate International Inc, it is a public data set. The data consists of four quarterly tables: Quarters two, three and four of year 2019 (Apr - Dec) and Quarter one of year 2020 (Jan - Mar)
+
+The csv data files were upload into BigQuery for storage Divvy_Trips_2019_Q2_B.csv Divvy_Trips_2019_Q3_B.csv Divvy_Trips_2019_Q4_B.scv Divvy_Trips_2020_Q1_B.csv
+
+#### Below is a sample of data from the four tables.
+
+```{sql connection=con}
+select * from mybig-query-test.case_study_1.Divvy_Trips_2019_Q2_B
+limit 100
+
+```
+
+```{sql connection=con}
+select * from mybig-query-test.case_study_1.Divvy_Trips_2019_Q3_B
+limit 100
+
+```
+
+```{sql connection=con}
+select * from mybig-query-test.case_study_1.Divvy_Trips_2019_Q4_B
+limit 100
+
+```
+
+```{sql connection=con}
+select * from mybig-query-test.case_study_1.Divvy_Trips_2020_Q1_B
+limit 100
+
+```
+
+#### **Upon an initial examination of the data we observe the following:**
+
+-   [**The column names were different for some of the tables, it will be good to rename them for consistency - done 2019**]{.underline}
+
+-   The format of the column for the '**Rental_ID' for Q1 2020 is STRING while that of the remaining tables are INTEGERS** - this will need to be reformatted for consistency
+
+-   The column name for the rider categories (**member_casual**) in year 2020 is titled differently
+
+-   The options from rider categories column '**member_casual' in year 2020 tables are different - casual and subscribers in contrast to Subscribers and Customers** in the 2019 tables
+
+-   The format of the column for the '**Rental_ID' for Q1 2020 is STRING while that of the remaining tables are INTEGERS** so this will need to be reformatted for consistency
+
+-   The **gender and birth year** columns are available in the 2019 data but are missing from the 2020 data
+
+-   The 2020 data contains **starting and ending latitudes and longitudes** for the bike rides, this information is missing from 2019 data
+
+-   Upon visual check, there are very many **NULL values especially in the 'gender' and 'birthyear'** columns for tables in year 2019
+
+-   **'rideable_type' column found in 2020 data is missing from 2019 data**
+
+    #### 
+
+## Processing and Cleaning of the Data
+
+Year 2019 tables
+
+-   [**The column names were different for some of the tables, it will be good to rename them for consistency - done 2019**]{.underline}
+
+Combine the three tables - Q1-Q3 2019 that have the same format into one table & update the column names in the process
+
+```{sql connection=con}
+# Combine the three tables - Q1-Q3 2019
+
+CREATE TABLE
+  mybig-query-test.case_study_1.combined_raw_2019_q234 AS (
+  SELECT
+    *
+  FROM
+    mybig-query-test.case_study_1.Divvy_Trips_2019_Q4_B
+  UNION ALL
+  SELECT
+    *
+  FROM
+    mybig-query-test.case_study_1.Divvy_Trips_2019_Q3_B
+  UNION ALL
+  SELECT
+    *
+  FROM
+    mybig-query-test.case_study_1.Divvy_Trips_2019_Q2_B)
+
+```
+
+-   The format of the column for the '**Rental_ID' for Q1 2020 is STRING while that of the remaining tables are INTEGERS** - this will need to be reformatted for consistency
+
+Format 'Rental_ID' column for **combined_raw_2019_q234** from INTEGER to STRING to be consistent with year 2020 table
+
+```{sql connection=con }
+
+# format column 'Rental_ID' from INTEGER to STRING
+create table mybig-query-test.case_study_1.V2_combined_raw_2019_q234 as
+(SELECT 
+cast (trip_id as string) as trip_id,
+start_time, 
+end_time, 
+cast (tripduration as integer) as tripduration, 
+from_station_id, 
+from_station_name, 
+to_station_id, 
+to_station_name, 
+usertype, 
+gender, 
+birthyear
+ FROM `mybig-query-test.case_study_1.combined_raw_2019_q234`)
+```
+
+### Year 2020 table
+
+-   Rename column name for the rider categories (**member_casual**) in year 2020 to usertype
+
+-   Update the options from rider categories column 'member_casual' in year 2020 tables - **from casual and subscribers to Subscribers and Customers**
+
+-   Process year 2020 table and remove - **rideable_type, starting and ending latitudes and longitudes**
+
+-   The **gender and birth year** columns are available in the 2019 data but are missing from the 2020 data - add the columns to the new table for consistency and ease of merging
+
+-   *We will not be reporting on rideable_type (contains only one observation 'docked bikes'), longitude and latitude columns as this data is only available in Q1 of year 2020 - this may be analysed in the year 2020 that has full data with regards to this*
+
+Rename 2020 Q1 trips columns and create trip duration column to be consistent with 2019 and update the values in the user_type from casual and subscribers to Subscriber and Customer
+
+```{sql connection=con}
+# rename 2020 q1 trips columns and create tripduration column to be consistent with 2019
+CREATE TABLE
+  mybig-query-test.case_study_1.for_combine_Trips_2020_Q1_B AS (
+  SELECT
+    ride_id,
+    started_at,
+    ended_at,
+    datetime_diff(ended_at,
+      started_at,
+      second) AS tripduration,
+    start_station_id,
+    start_station_name,
+    end_station_id,
+    end_station_name,
+    CASE
+      WHEN member_casual = 'member' THEN 'Subscriber'
+      WHEN member_casual = 'casual' THEN 'Customer'
+  END
+    AS usertype,
+    NULL AS gender,
+    NULL AS birthyear
+  FROM
+    `mybig-query-test.case_study_1.Divvy_Trips_2020_Q1_B`)
+
+```
+
+-   Combine 2019 and 2020 tables together and update the column headings in the process
+
+#### Combine 2019 and 2020 table
+
+```{sql connection=con}
+# Combine 2019 and 2020 table together
+create table mybig-query-test.case_study_1.raw_combined_2019_2020 as 
+(SELECT * FROM `mybig-query-test.case_study_1.V2_for_combine_Trips_2020_Q1_B`
+union all 
+select * from `mybig-query-test.case_study_1.V2_combined_raw_2019_q234`)
+
+```
+
+#### View the combined 2019 and 2020 table - raw_combined_2019_2020
+
+```{sql connection=con}
+SELECT
+  *
+FROM
+  `mybig-query-test.case_study_1.raw_combined_2019_2020`
+  limit 1000
+```
+
+#### Further checks on the table after combining them
+
+Check table for duplicate records
+
+```{sql connection=con}
+# Check the table does not have duplicates
+SELECT
+  (
+  SELECT
+    COUNT(1)
+  FROM (
+    SELECT
+      DISTINCT *
+    FROM
+      `mybig-query-test.case_study_1.raw_combined_2019_2020`)) AS distinct_rows,
+  (
+  SELECT
+    COUNT(1)
+  FROM
+    `mybig-query-test.case_study_1.raw_combined_2019_2020`) AS all_table_rows
+
+```
+
+There are no duplicate records
+
+#### Perform verification checks on the individual columns - NULL and data range
+
+Checked individual columns to verify that there are no nulls in them - except gender and birthyear
+
+```{sql connection=con}
+# check for null rows
+SELECT
+  *
+FROM
+  `mybig-query-test.case_study_1.raw_combined_2019_2020`
+WHERE
+  started_at IS NULL
+  OR ended_at IS NULL
+  OR tripduration IS NULL
+  OR start_station_id is null
+  OR start_station_name IS NULL
+  OR end_station_id IS NULL
+  OR end_station_name IS NULL
+  OR usertype IS NULL
+```
+
+Found 1 row with nulls, filter out this row
+
+#### In order to filter and clean the table to extract a final table for analysis, we perform the following actions:
+
+Confirm the available usertype options to be only - Subscriber and Customer
+
+```{sql connection=con}
+SELECT
+  distinct usertype
+FROM
+  `mybig-query-test.case_study_1.raw_combined_2019_2020`
+```
+
+#### Create a new table and filter out duplicate records and the row with the null value - ride_id = 157EAA4C4A3C8D36
+
+```{sql connection=con}
+CREATE TABLE
+  mybig-query-test.case_study_1.no_duplicates_2019_2020 AS (
+  SELECT
+    DISTINCT *
+  FROM
+    `mybig-query-test.case_study_1.raw_combined_2019_2020`
+  WHERE
+    ride_id != '157EAA4C4A3C8D36')
+
+```
+
+#### Verification - check that the data falls within the range of april 2019 - march 2020 check the min of started_at check the max of ended_at
+
+```{sql connection=con}
+SELECT
+  MIN(started_at) AS earliest_trip_start,
+  max (started_at) AS latest_trip_start,
+  gender
+FROM
+  `mybig-query-test.case_study_1.no_duplicates_2019_2020`
+GROUP BY
+  gender
+```
+
+No trips started outside of the data range of Apr 2019 and Mar 2020
+
+#### Check min, max and average of age trip duration to determine overall range of the data
+
+```{sql connection=con}
+# what is the min, max and avg of tripduration
+SELECT
+  MIN(tripduration) AS min_trip_duration,
+  max (tripduration) AS max_trip_duration,
+  round(avg (tripduration),2) AS avg_trip_duration,
+  usertype
+FROM
+  `mybig-query-test.case_study_1.no_duplicates_2019_2020`
+GROUP BY
+  usertype
+```
+
+There are some negative trip duration which suggests some incorrect data Also I am assuming that any bike ride from any point A to point B should take at least 5 mins
+
+#### Check the minimum, maximum and averages of ages to the determine the overall range
+
+```{sql connection=con}
+SELECT
+  max (2020 - birthyear) AS oldest,
+  min (2020 - birthyear) AS youngest,
+  avg (2020 - birthyear) AS average_year
+FROM
+  `mybig-query-test.case_study_1.no_duplicates_2019_2020`
+WHERE
+  birthyear IS NOT NULL
+```
+
+Shows some riders to be as old as 261 years, suggesting inaccurate records.
+
+Remove riders older than 75 years - I am using 75 years as the max age for a rider
+
+#### Count records where rider is older than 75 years
+
+```{sql connection=con}
+SELECT
+  COUNT(birthyear) as riders_above_75yrs
+FROM
+  `mybig-query-test.case_study_1.no_duplicates_2019_2020`
+WHERE
+  ((EXTRACT(year
+      FROM
+        current_date)) - birthyear) > 75
+```
+
+#### Further cleaning to be done
+
+Remove tripduration with duration less than 5 mins Remove riders older than 75 years
+
+```{sql connection=con}
+# create new table and exclude records trip duration below 5 minutes and riders older than 75 years
+create table mybig-query-test.case_study_1.cleaned_2019_2020 as 
+(SELECT
+  ride_id,
+  started_at,
+  ended_at,
+  ROUND((tripduration/60),2) AS tripduration_mins,
+  start_station_id,
+  start_station_name,
+  end_station_id,
+  end_station_name,
+  usertype,
+  gender,
+  2020 - birthyear AS member_age
+FROM
+  `mybig-query-test.case_study_1.no_duplicates_2019_2020`
+WHERE
+  tripduration >= 300
+  AND 2020 - birthyear <= 75)
+```
+
+#### View the cleaned final table before Analysis
+
+```{sql connection=con}
+select *
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+  limit 1000
+```
+
+## Analysis and Insights
+
+In order to perform our analysis and resolve the business dilemma, we go back to our original question which is to understand the differences between the rider categories and how they use the Cyclistic bikes differently. Specifically, we want to limit the scope of our analysis to differences that may influence the marketing objectives so that we do not engage in an endless quest.
+
+#### Compare the number of riders in both categories
+
+```{sql connection=con}
+SELECT
+  COUNT(*) frequency,
+  'Total Subscribers'
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+WHERE
+  usertype = 'Subscriber'
+UNION ALL
+SELECT
+  COUNT(*),
+  'Total Customers'
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+WHERE
+  usertype = 'Customer'
+```
+
+![](images/%20of%20Total%20%20of%20Total-01.png)
+
+### Annual Members (Subscribers) vs. Customers (Casual Riders) by Gender
+
+![](images/Screenshot%202022-03-15%20at%208.54.42%20AM.png)
+
+86% of Riders are Annual members (Subscribers), 5%
+
+14% of Riders are Casual Riders (Customers).
+
+#### Annual riders are far more than Casual riders. In fact, most of the riders are annual members
+
+5.13% are female casual riders
+
+23.38% are female annual members
+
+#### There are more female annual members than female casual riders
+
+8.15% are male casual riders
+
+63.34% are male annual members
+
+#### There are more male annual members than male casual riders, male annual members are the most predominant riders overall
+
+#### No or Subscribers in each age group classification
+
+```{sql connection=con}
+#age group classification of riders for Subscribers
+# age group classification by user-type
+  -- at least 25 years
+  -- 26-35 years
+  -- 36-45 years
+  -- 46-55 years
+  -- 56-65 years
+  -- 66 - 75 years
+SELECT
+  CASE
+    WHEN member_age <= 25 THEN '0 - 25 yrs'
+    WHEN member_age>= 26
+  AND member_age <=35 THEN '26 - 35 yrs'
+    WHEN member_age >= 36 AND member_age <=45 THEN '36 - 45 yrs'
+    WHEN member_age >= 46
+  AND member_age<=55 THEN '46 - 55 yrs'
+    WHEN member_age >= 56 AND member_age <=65 THEN '56 - 65 yrs'
+  ELSE
+  '66 - 75 yrs'
+END
+  AS age_group,
+  COUNT(*) AS qty_in_age_group
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+WHERE
+  usertype = 'Subscriber'
+  AND member_age IS NOT NULL
+GROUP BY
+  age_group
+ORDER BY
+  qty_in_age_group DESC
+```
+
+#### No or Customers in each age group classification
+
+```{sql connection=con}
+#age group classification of riders for Customers
+# age group classification by user-type
+  -- at least 25 years
+  -- 26-35 years
+  -- 36-45 years
+  -- 46-55 years
+  -- 56-65 years
+  -- 66 - 75 years
+SELECT
+  CASE
+    WHEN member_age <= 25 THEN '0 - 25 yrs'
+    WHEN member_age>= 26
+  AND member_age <=35 THEN '26 - 35 yrs'
+    WHEN member_age >= 36 AND member_age <=45 THEN '36 - 45 yrs'
+    WHEN member_age >= 46
+  AND member_age<=55 THEN '46 - 55 yrs'
+    WHEN member_age >= 56 AND member_age <=65 THEN '56 - 65 yrs'
+  ELSE
+  '66 - 75 yrs'
+END
+  AS age_group,
+  COUNT(*) AS qty_in_age_group
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+WHERE
+  usertype = 'Customer'
+  AND member_age IS NOT NULL
+GROUP BY
+  age_group
+ORDER BY
+  qty_in_age_group DESC
+```
+
+#### No. of Riders by Age group
+
+![](images/Screenshot%202022-03-15%20at%209.09.23%20AM.png)
+
+Most of the riders for both casual and annual members are in the age group of (26-36) years
+
+For annual members the 2nd leading age group is 36-45yrs followed by 46-55yrs
+
+For casual riders, the 2nd leading age group is 0-25yrs followed by 36-45 yrs
+
+Note: data is only available for 2019
+
+### Top stations where Riders ride from
+
+#### Top 100 Stations where Subscribers start their rides from
+
+```{sql connection=con}
+# Top 100 Stations where most Customers start their rides from
+SELECT
+  COUNT(ride_id) AS freq_of_rides,
+  start_station_name,
+  CASE
+    WHEN usertype = 'Subscriber' THEN 'Annual member'
+    WHEN usertype = 'Customer' THEN 'Casual riders'
+  ELSE
+  'Not indicated'
+END
+  AS usertype,
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+  where usertype = 'Subscriber'
+GROUP BY
+  start_station_name,
+  3
+ORDER BY
+  freq_of_rides DESC,
+  usertype DESC
+  limit 100
+```
+
+#### Top 100 Stations where Customers start their rides from
+
+```{sql connection=con}
+# Top 100 Stations where most Customers start their rides from
+SELECT
+  COUNT(ride_id) AS freq_of_rides,
+  start_station_name,
+  CASE
+    WHEN usertype = 'Subscriber' THEN 'Annual member'
+    WHEN usertype = 'Customer' THEN 'Casual riders'
+  ELSE
+  'Not indicated'
+END
+  AS usertype,
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+  where usertype = 'Customer'
+GROUP BY
+  start_station_name,
+  3
+ORDER BY
+  freq_of_rides DESC,
+  usertype DESC
+  limit 100
+```
+
+#### Top Stations were Riders rent from
+
+![](images/Screenshot%202022-03-15%20at%209.25.08%20AM.png)
+
+The viz shows the names of the top Stations were Riders rent bikes from.
+
+#### Top stations where Riders stop at
+
+Top 100 Stations where Subscribers end their rides at
+
+```{sql connection=con}
+# Top 100 Stations where Subscribers end their rides at
+SELECT
+  COUNT(ride_id) AS freq_of_rides,
+  end_station_name,
+  CASE
+    WHEN usertype = 'Subscriber' THEN 'Annual member'
+    WHEN usertype = 'Customer' THEN 'Casual riders'
+  ELSE
+  'Not indicated'
+END
+  AS usertype,
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+  where usertype = 'Subscriber'
+GROUP BY
+  end_station_name,
+  3
+ORDER BY
+  freq_of_rides DESC,
+  usertype DESC
+  limit 100
+```
+
+Top 100 Stations where Customers end their rides at
+
+```{sql connection=con}
+# Top 100 Stations where Customers end their rides at
+SELECT
+  COUNT(end_station_name) AS freq_of_rides,
+  end_station_name,
+  CASE
+    WHEN usertype = 'Subscriber' THEN 'Annual member'
+    WHEN usertype = 'Customer' THEN 'Casual riders'
+  ELSE
+  'Not indicated'
+END
+  AS usertype,
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+  where usertype = 'Customer'
+GROUP BY
+  end_station_name,
+  3
+ORDER BY
+  freq_of_rides DESC,
+  usertype DESC
+  limit 100
+```
+
+#### Top Stations were Riders park at
+
+![](images/Screenshot%202022-03-15%20at%209.31.03%20AM-01.png)
+
+#### Top stations where both Subscribers and Customers rent from
+
+```{sql connection=con}
+SELECT
+  DISTINCT start_station_name,
+  COUNT(ride_id) AS freq_of_rides
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+WHERE
+  usertype = 'Subscriber'
+  AND start_station_name IN (
+  SELECT
+    start_station_name
+  FROM
+    `mybig-query-test.case_study_1.cleaned_2019_2020`
+  WHERE
+    usertype = 'Customer' )
+GROUP BY
+  start_station_name
+ORDER BY
+  freq_of_rides DESC
+LIMIT
+  100
+```
+
+#### Top stations where both Subscribers and Customers park at
+
+```{sql connection=con}
+SELECT
+  DISTINCT end_station_name,
+  COUNT(ride_id) AS freq_of_rides
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+WHERE
+  usertype = 'Subscriber'
+  AND end_station_name IN (
+  SELECT
+    end_station_name
+  FROM
+    `mybig-query-test.case_study_1.cleaned_2019_2020`
+  WHERE
+    usertype = 'Customer' )
+GROUP BY
+  end_station_name
+ORDER BY
+  freq_of_rides DESC
+LIMIT
+  100
+```
+
+#### Top stations where both Subscribers and Customers rent from and park at
+
+```{sql connection=con}
+SELECT
+  DISTINCT start_station_name,
+  COUNT(ride_id) AS freq_of_rides
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+WHERE
+  usertype = 'Subscriber'
+  AND start_station_name IN (
+  SELECT
+    start_station_name
+  FROM
+    `mybig-query-test.case_study_1.cleaned_2019_2020`
+  WHERE
+    usertype = 'Customer' )
+GROUP BY
+  start_station_name 
+  INTERSECT DISTINCT
+SELECT
+  DISTINCT end_station_name,
+  COUNT(ride_id) AS freq_of_rides
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+WHERE
+  usertype = 'Subscriber'
+  AND end_station_name IN (
+  SELECT
+    end_station_name
+  FROM
+    `mybig-query-test.case_study_1.cleaned_2019_2020`
+  WHERE
+    usertype = 'Customer' )
+GROUP BY
+  end_station_name
+ORDER BY
+  freq_of_rides DESC
+LIMIT
+  100
+```
+
+#### No of rentals on a monthly basis based on rider category
+
+```{sql connection=con}
+SELECT
+  count (ride_id) AS freq_of_ride,
+  EXTRACT(month
+  FROM (CAST ( started_at AS date))) AS start_month,
+  usertype
+FROM
+  `mybig-query-test.case_study_1.cleaned_2019_2020`
+
+GROUP BY
+  usertype,
+  start_month
+ORDER BY
+  start_month
+```
+
+#### Freq of rentals - Monthly/Quarterly
+
+![](images/Screenshot%202022-03-15%20at%209.42.00%20AM.png)
+
+#### Weekly trend of Bike rides
+
+![](images/Screenshot%202022-03-15%20at%209.43.51%20AM.png)
+
+## Recommendations
+
+Most of the riders have an Annual membership and most of the riders are predominantly male. 
+
+#### A spousal or couple's advertising incentive can be targeted towards the riders to encourage them to ride with their spouse or partner, this will encourage more female riders to begin riding.
+
+Casual riders have a younger demographics with most of them in the age range of (0-36yrs) while the Annual members are bit older with most of them in the age range of (26 - 45yrs)
+
+#### Advertising and marketing campaigns that appeal to a younger demographics should be created to target the predominantly younger casual riders. 
+
+**Streeter Dr and Grand Ave** is the leading station were casual riders rent from and park at (15,800 riders).
+
+#### Targeted marketing, branding should be done in this location and other similar leading locations were riders rent from or park at the most. Company representatives may be placed at those stations to chat with and encourage riders to become subscribers.
+
+Riders show a preference for riding from certain stations or there are more riders who live around certain stations.
+
+#### List of these top stations should be collated.
+
+Locations where there are more Annual riders should have more focus and serve as stations where company representatives or advertising is targeted towards Annual members.
+
+#### Annual members should be encouraged to provide reviews and recommendations and also chat with and encourage casual riders in those locations.
+
+Bike riding activities start of well on Mondays and peak on Tuesdays, most riders prefer to ride during the week days with the least bike riding activity over the week-end, starting by a sharp decline on Fridays
+
+#### Timing advertising and promotional contents over the week while people are relaxing and also making adequate bike inventory, customer care arrangements to cater for the mid-week bike rush rental is also recommended.
+
+## Conclusion
+
+Cyclistic Bike Sharing Company was interested in knowing how the their two categories of bikers use the bikes differently in order to be able to provide a targeted marketing and advertisement campaign.
+
+The data from 4 different quarterly tables provided was from April 2019 to march 2020. The data was prepared, processed and merged together.
+
+Analysis confirmed that there are two categories of riders namely Annual members and Customers (Casual riders). The annual subscribers were the most with male being the most bikers. Most of the bikers across both biker categories were young people from age (0 -45 yrs), however casual riders have a more younger biker age range. Some stations appear to be biker favourites as they are the stations were most bikers rented or parked at. This could also be due to the population of people in that geographic location. Analysis also showed that most riders preferred to ride during summer and also during weekdays.
+
+We provided some recommendations among which is that marketing activities should be targeted towards the younger audience with the bikers provided incentives for them to ride with their spouse thereby encouraging more female bikers and also for promotions to be properly timed during off peak riding periods in anticipation of the most active biking period.
