@@ -1,4 +1,5 @@
-# case-study-1
+# Cyclistic Bike Ride Sharing Case Study
+
 Cyclistic Bike Ride Sharing Case Study
 ### Cyclistic Bike Sharing Company, Chicago, USA
 
